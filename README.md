@@ -14,7 +14,7 @@ SecondCut turns a photograph of an irregular leather or fabric remnant into an e
 4. Calibrate with two marks a known distance apart in the same plane, or enter the measured width of the **entire photograph**. This is not the remnant width.
 5. Enter rectangle or ellipse dimensions, quantities, orientation, edge clearance and spacing. Generate and review the layout.
 6. Export the SVG, print at 100% and measure its 50 mm scale bar. Check the physical remnant before cutting.
-7. Open a guest workspace or sign in with email/password or Google to save revisions. Convert a guest workspace to a permanent account before relying on it across devices. Clearing browser authentication can make an unlinked guest workspace inaccessible.
+7. Open a guest workspace or sign in with email/password to save revisions. Convert a guest workspace to a permanent account before relying on it across devices. Clearing browser authentication can make an unlinked guest workspace inaccessible.
 
 The two labeled sample photographs are synthetic ImageGen fixtures with an assumed 300 mm photo width. They are demonstrations, not measured material or a field evaluation set.
 
@@ -27,7 +27,7 @@ The two labeled sample photographs are synthetic ImageGen fixtures with an assum
 | Masks | Cached image embeddings for repeated prompts; prompt-consistent candidate filtering; model-predicted IoU ranking; connected-component selection; editable binary masks up to 512 pixels per side. |
 | Planning | Conservative resize to a maximum 240-pixel grid, clearance erosion and full row-band shape envelopes. Eight deterministic greedy orders prioritize completed piece count, then nominal area. |
 | Scale/export | Calibrated physical X/Y geometry and SVG millimeter units, material outline, piece labels and a 50 mm verification bar. |
-| Accounts | Firebase Authentication, including anonymous guest workspaces, email/password and Google. |
+| Accounts | Firebase Authentication, including anonymous guest workspaces, email/password. |
 | Persistence | Owner-scoped Firestore project revisions and chunked photographs, protected by deployed Firestore rules and transaction-based quota accounting. |
 
 There is no threshold fallback or hardcoded sample mask. Loading or inference failure remains visible. The model's predicted IoU is **not measured accuracy, calibrated probability or dimensional accuracy**. Uploaded photographs stay in the browser during inference; saving a source photograph uploads it to Firebase.
@@ -62,7 +62,7 @@ npm start
 
 `npm start` previews the static production build locally. It does not deploy. Development and preview use the configured Firebase backend unless emulators are explicitly enabled. Do not use a shared production workspace for disposable tests.
 
-For an independent fork, create your own Firebase project and web app, replace `lib/firebase-config.json`, update `.firebaserc` and the Hosting site in `firebase.json`, and enable anonymous, email/password and Google authentication. Add your development and deployed domains to Firebase Auth's authorized domains. Deploy `firestore.rules` to your own project before testing persistence. For local Auth/Firestore emulators, start the emulators defined in `firebase.json` and set `VITE_FIREBASE_EMULATORS=1` when running Vite.
+For an independent fork, create your own Firebase project and web app, replace `lib/firebase-config.json`, update `.firebaserc` and the Hosting site in `firebase.json`, and enable anonymous, email/password authentication. Add your development and deployed domains to Firebase Auth's authorized domains. Deploy `firestore.rules` to your own project before testing persistence. For local Auth/Firestore emulators, start the emulators defined in `firebase.json` and set `VITE_FIREBASE_EMULATORS=1` when running Vite.
 
 ## Deploy
 
