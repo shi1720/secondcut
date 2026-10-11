@@ -55,3 +55,9 @@ test('all-invalid model candidates fail visibly and never become threshold masks
  assert.throws(()=>selectPromptConsistentMask(new Uint8Array(64).fill(1),[1,1,8,8],[.99],points),/No model candidate passed/);
  assert.throws(()=>selectPromptConsistentMask(new Uint8Array(64),[1,1,8,8],[.99],points),/No model candidate passed/);
 });
+test('malformed dimensions and prompts cannot manufacture a valid foreground',()=>{
+ assert.throws(()=>selectBestMask(new Uint8Array(6),[1,1,1.5,4],[.9]));
+ const data=new Uint8Array(100);data.fill(1,22,77);
+ assert.throws(()=>selectPromptConsistentMask(data,[1,1,10,10],[.9],[{x:NaN,y:.5,label:1}]));
+ assert.throws(()=>selectPromptConsistentMask(data,[1,1,10,10],[.9],[{x:.5,y:.5,label:0}]));
+});

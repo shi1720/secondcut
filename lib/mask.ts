@@ -3,7 +3,7 @@ export type Mask = { width: number; height: number; data: Uint8Array };
 export type PromptPoint = { x: number; y: number; label: 0 | 1 };
 
 export function validateMask(mask: Mask): void {
-  if (!Number.isInteger(mask.width) || !Number.isInteger(mask.height) || mask.width < 1 || mask.height < 1 || mask.data.length !== mask.width * mask.height) throw new Error('Invalid mask dimensions.');
+  if (!Number.isInteger(mask.width) || !Number.isInteger(mask.height) || mask.width < 1 || mask.height < 1 || mask.width > 2048 || mask.height > 2048 || !(mask.data instanceof Uint8Array) || mask.data.length !== mask.width * mask.height) throw new Error('Invalid mask dimensions.');
 }
 export function maskArea(mask: Mask): number {
   validateMask(mask);
@@ -11,12 +11,13 @@ export function maskArea(mask: Mask): number {
   return count;
 }
 export function fitDimensions(width: number, height: number, maxEdge = 512) {
-  if (![width, height, maxEdge].every(n => Number.isFinite(n) && n > 0)) throw new Error('Invalid image dimensions.');
+  if (![width, height, maxEdge].every(n => Number.isSafeInteger(n) && n > 0)) throw new Error('Invalid image dimensions.');
   const scale = Math.min(1, maxEdge / Math.max(width, height));
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 export function resizeMaskNearest(mask: Mask, width: number, height: number): Mask {
   validateMask(mask);
+  if (![width, height].every(n => Number.isInteger(n) && n >= 1 && n <= 2048)) throw new Error('Invalid resized mask dimensions.');
   const output: Mask = { width, height, data: new Uint8Array(width * height) }; validateMask(output);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const sx = Math.min(mask.width - 1, Math.floor((x + 0.5) * mask.width / width));
@@ -25,13 +26,16 @@ export function resizeMaskNearest(mask: Mask, width: number, height: number): Ma
   }
   return output;
 }
+function validatePoints(points: PromptPoint[], requireForeground = true) {
+  if (points.length > 32 || (requireForeground && !points.some(p => p.label === 1)) || points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1 || (p.label !== 0 && p.label !== 1))) throw new Error('Use valid normalized prompts including a foreground point.');
+}
 function pointIndex(mask: Mask, p: PromptPoint) {
   return Math.min(mask.height - 1, Math.floor(p.y * mask.height)) * mask.width + Math.min(mask.width - 1, Math.floor(p.x * mask.width));
 }
 /** Keep the largest four-connected component hit by a foreground prompt.
  * Unprompted islands are removed; holes remain holes, never silently filled. */
 export function largestPromptComponent(mask: Mask, points: PromptPoint[]): Mask {
-  validateMask(mask);
+  validateMask(mask); validatePoints(points);
   const labels = new Int32Array(mask.data.length);
   const queue = new Int32Array(mask.data.length);
   const sizes = [0]; let component = 0;
@@ -57,7 +61,7 @@ export function largestPromptComponent(mask: Mask, points: PromptPoint[]): Mask 
 /** Immutable brush operation. x/y normalized; radius is in mask pixels. */
 export function paintDisk(mask: Mask, x: number, y: number, radius: number, value: 0 | 1): Mask {
   validateMask(mask);
-  if (![x, y, radius].every(Number.isFinite) || radius < 0 || x < 0 || x > 1 || y < 0 || y > 1) throw new Error('Invalid brush location.');
+  if (![x, y, radius].every(Number.isFinite) || (value !== 0 && value !== 1) || radius < 0 || x < 0 || x > 1 || y < 0 || y > 1) throw new Error('Invalid brush location.');
   const data = new Uint8Array(mask.data), cx = x * (mask.width - 1), cy = y * (mask.height - 1);
   for (let py = Math.max(0, Math.floor(cy - radius)); py <= Math.min(mask.height - 1, Math.ceil(cy + radius)); py++) for (let px = Math.max(0, Math.floor(cx - radius)); px <= Math.min(mask.width - 1, Math.ceil(cx + radius)); px++) if ((px - cx) ** 2 + (py - cy) ** 2 <= radius ** 2) data[py * mask.width + px] = value;
   return { ...mask, data };
@@ -68,6 +72,7 @@ export function subtractMask(material: Mask, exclusion: Mask): Mask {
   return { ...material, data: Uint8Array.from(material.data, (value, i) => value && !exclusion.data[i] ? 1 : 0) };
 }
 export function assessMask(mask: Mask, points: PromptPoint[]): string[] {
+  validatePoints(points, false);
   const area = maskArea(mask), fraction = area / mask.data.length, warnings: string[] = [];
   if (fraction < 0.002) warnings.push('The selected material is too small. Capture closer or add a foreground point.');
   if (fraction > 0.9) warnings.push('The mask covers nearly the entire image. Include the worktop and add background points.');
@@ -80,9 +85,10 @@ export function assessMask(mask: Mask, points: PromptPoint[]): string[] {
 }
 /** Model output is [batch=1,promptBatch=1,candidate,height,width]. */
 export function selectBestMask(data: ArrayLike<number>, dims: readonly number[], scores: ArrayLike<number>): { mask: Mask; score: number; candidate: number } {
-  if (dims.length !== 4 || dims[0] !== 1 || dims[1] !== scores.length || !scores.length) throw new Error('Unexpected segmentation tensor dimensions.');
+  if (dims.some(n => !Number.isSafeInteger(n) || n < 1) || dims[2] > 2048 || dims[3] > 2048 || dims.length !== 4 || dims[0] !== 1 || dims[1] !== scores.length || !scores.length) throw new Error('Unexpected segmentation tensor dimensions.');
   const [, candidates, height, width] = dims;
-  if (data.length !== candidates * height * width) throw new Error('Segmentation tensor size is inconsistent.');
+  if (candidates > 32 || data.length !== candidates * height * width) throw new Error('Segmentation tensor size is inconsistent.');
+  for (let i = 0; i < data.length; i++) if (data[i] !== 0 && data[i] !== 1) throw new Error('Segmentation masks must contain binary values.');
   let candidate = 0;
   for (let i = 0; i < scores.length; i++) { if (!Number.isFinite(scores[i])) throw new Error('The model produced an invalid score.'); if (scores[i] > scores[candidate]) candidate = i; }
   const offset = candidate * height * width;
@@ -93,6 +99,7 @@ export function selectBestMask(data: ArrayLike<number>, dims: readonly number[],
  * A high predicted-IoU score never overrides an explicitly excluded background.
  * If every candidate fails, report the failure instead of inventing a boundary. */
 export function selectPromptConsistentMask(data: ArrayLike<number>, dims: readonly number[], scores: ArrayLike<number>, points: PromptPoint[]): { mask: Mask; score: number; candidate: number } {
+  validatePoints(points);
   selectBestMask(data, dims, scores); // validates complete tensor and scores
   const width = dims[3], height = dims[2], pixels = width * height;
   const ranked = Array.from({ length: scores.length }, (_, i) => i).sort((a, b) => scores[b] - scores[a]);

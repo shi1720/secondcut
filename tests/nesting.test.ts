@@ -17,3 +17,30 @@ test('portrait downsampling keeps physical Y scale and mixed shapes inside revie
  for(const a of r.placements)assert.ok(a.yMm+a.heightMm<=512);
 });
 test('subpixel exclusions remove every intersected raster cell and malformed mask dimensions fail',()=>{const out=applyExclusions(rect(10,10),[{x:.5,y:.5,r:.001}]);for(const i of [44,45,54,55])assert.equal(out.data[i],0);assert.throws(()=>decodeMask({width:1.5,height:8,runs:[12]}));assert.throws(()=>decodeMask({width:4096,height:1,runs:[4096]}));assert.throws(()=>applyExclusions(rect(10,10),[{x:NaN,y:.5,r:.1}]));});
+test('wide shallow ellipses cannot cross an excluded strip between sampled row centers',async()=>{
+ const m=rect(240,20);for(let y=0;y<20;y++)m.data[y*240+224]=0;
+ const result=await nestPatterns(m,600,[{...p,shape:'ellipse',widthMm:570,heightMm:5,quantity:1,rotate:false}],0,0);
+ assert.equal(result.placements.length,0,'continuous ellipse crosses strip despite center-row silhouette');
+});
+test('invalid raster controls fail rather than silently corrupting geometry',()=>{
+ for(const size of [0,NaN,Infinity,2.5])assert.throws(()=>conservativeResize(rect(10,10),size));
+ for(const radius of [-1,NaN,.5])assert.throws(()=>erodeMask(rect(10,10),radius));
+});
+test('SVG preserves calibrated physical aspect independently of rounded mask dimensions',async()=>{
+ const m=rect(100,50),r=await nestPatterns(m,100,[p],2,2);
+ assert.throws(()=>planSvg(r,100,NaN,m,'Invalid height'));
+ assert.ok(planSvg(r,100,100,m,'Scaled aspect').includes('v2.000'));
+ assert.ok(planSvg(r,100,50,m,'Correct aspect').includes('height="85mm"'));
+});
+
+test('explicit physical photo height governs packing Y geometry after rounded mask resize',async()=>{
+ const m=rect(100,50);const result=await nestPatterns(m,100,[{...p,widthMm:20,heightMm:70,quantity:1,rotate:false}],0,0,undefined,100);
+ assert.equal(result.placements.length,1);assert.ok(result.placements[0].yMm+70<=100);
+ const defaultResult=await nestPatterns(m,100,[{...p,widthMm:20,heightMm:70,quantity:1,rotate:false}],0,0);assert.equal(defaultResult.placements.length,0);
+});
+
+test('extremely shallow photos and oversized pieces stay bounded rather than creating huge footprints',async()=>{
+ const result=await nestPatterns(rect(240,1),50,[{...p,widthMm:3000,heightMm:3000}],0,0,undefined,50/2048);
+ assert.equal(result.placements.length,0);
+ await assert.rejects(nestPatterns(rect(240,1),50,[p],0,0,undefined,1e-300));
+});

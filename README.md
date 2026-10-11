@@ -1,135 +1,103 @@
 # SecondCut
 
-### A cutting plan for the offcut you already have
+A cutting plan for the offcut you already have.
 
-[Source repository](https://github.com/shi1720/secondcut). Planned demo: `secondcut-shivam.sg127977958.chatgpt.site`, private until publication and verification.
+**[Open SecondCut](https://secondcut-studio.web.app)** · [Source](https://github.com/shi1720/secondcut)
 
-SecondCut helps a small leather maker work out which rectangular or elliptical blanks fit inside an irregular remnant. A photograph becomes an editable material mask through real SlimSAM image segmentation. A constrained planner arranges the requested pieces, and an SVG gives the maker a scaled plan to verify before cutting.
+SecondCut turns a photograph of an irregular leather or fabric remnant into an editable material mask and a scaled cutting layout. It helps small makers explore which rectangular or elliptical blanks fit before cutting. Created by **Shivam Gupta** for Banana Hacks 2026, with Codex coding and research assistance.
 
-**Created by Shivam Gupta for Banana Hacks 2026, with Codex coding and research assistance.** This is new event work built on a standard Sites/Vinext starter and credited pretrained libraries. It is not submitted to another hackathon.
+## Use it
 
-> Physical verification comes first. The model does not grade leather or find every defect. Enter a measured photo width, inspect the mask, mark unusable areas, and verify the SVG's 50 mm scale bar with a ruler. The app does not drive a cutter or certify a cut.
+1. Photograph one flat remnant directly overhead on a contrasting worktop, including its entire outline.
+2. Add foreground and background points. Real, local SlimSAM segmentation proposes the boundary.
+3. Inspect and correct the mask. Manually exclude holes, scars, weak spots and other unusable material.
+4. Calibrate with two marks a known distance apart in the same plane, or enter the measured width of the **entire photograph**. This is not the remnant width.
+5. Enter rectangle or ellipse dimensions, quantities, orientation, edge clearance and spacing. Generate and review the layout.
+6. Export the SVG, print at 100% and measure its 50 mm scale bar. Check the physical remnant before cutting.
+7. Open a guest workspace or sign in with email/password or Google to save revisions. Convert a guest workspace to a permanent account before relying on it across devices. Clearing browser authentication can make an unlinked guest workspace inaccessible.
 
-## Why this problem
+The two labeled sample photographs are synthetic ImageGen fixtures with an assumed 300 mm photo width. They are demonstrations, not measured material or a field evaluation set.
 
-Irregular remnants can still contain useful material, but checking what fits takes planning. SecondCut focuses on repeat batches of small leather accessories such as rectangular panels and elliptical blanks. The first value hypothesis is less time mapping a remnant and trying layouts. Material savings, customer demand and willingness to pay need real workshop validation.
+## How it works
 
-Nesting software already exists. [UMWL](https://usemorewasteless.com/leather-hide-nesting/) supports manual hide mapping and SVG nesting. [ScrapFit](https://scrapfit.webbe-b.com/) plans fabric remnants. [Stitch Hero](https://stitch-hero.com/) supports photo calibration, tracing and leather CAD. [Zünd](https://www.zund.com/en/applications/interiors/turnkey-systems-for-leather-processing) combines camera capture and industrial nesting. Our experiment is a browser workflow that connects prompted image segmentation, manual correction and a practical cutting plan for small makers.
-
-## Workflow
-
-1. Photograph one flat remnant directly overhead on a contrasting worktop. Include its entire outline.
-2. Add foreground and background prompts. SlimSAM proposes a material boundary.
-3. Inspect the mask. Correct the boundary and exclude holes, weak spots or unwanted zones manually.
-4. For an uploaded photo, mark two ends of a known-length reference in the same material plane and enter its millimeters. Alternatively, enter the measured width represented by the **entire photograph**. This is not the remnant's bounding-box width.
-5. Enter rectangular or elliptical pattern dimensions and quantities. Fixed orientation preserves the entered direction. Allowing rotation permits quarter turns.
-6. Set edge clearance and spacing, then generate a layout. Review placed and unplaced requests.
-7. Check against the physical remnant, export the SVG and measure its scale bar. Sign in to save job revisions and the source photo. The app preserves the unsaved studio draft across sign-in in same-tab session storage, subject to browser storage limits.
-
-The generated demo photos are **synthetic ImageGen fixtures**. Their assumed photo width is 300 mm, not a measurement. They are neither customer photographs nor a real-world evaluation set.
-
-## Technical architecture
-
-| Stage | Implementation |
+| Layer | Implementation |
 | --- | --- |
-| Image AI | Self-hosted quantized `Xenova/slimsam-77-uniform` ONNX model through Transformers.js 3.8.1 and browser WebAssembly. |
-| Prompting | Positive/negative clicks, coordinate transformation, cached image embedding for repeated prompts. |
-| Mask handling | Prompt-consistent, plausible-area candidate filtering, then model-predicted IoU selection, padded-mask postprocessing, maximum 512-pixel working mask, connected-component selection and prompt-consistency checks. |
-| Geometry | Conservative resize to a maximum 240-pixel planning grid, mask erosion for edge clearance, sampled rectangle/ellipse footprints and spacing. |
-| Planning | Eight deterministic greedy orders. Completed piece count is the primary objective, nominal area breaks ties. This is a bounded heuristic, not a global optimum. |
-| Export | SVG with millimeter units, placed shapes, material mask, job labels and a 50 mm calibration bar. |
-| Saved jobs | Owner-scoped D1 records and private R2 photographs through authenticated APIs. Saved jobs preserve inputs and masks, then recompute the plan when reopened. |
-| UI/runtime | React, TypeScript and Vinext/Vite on Cloudflare Workers, using platform-owned ChatGPT sign-in. |
+| App | React and TypeScript browser SPA, built with Vite and served by Firebase Hosting. |
+| Image AI | Self-hosted quantized `Xenova/slimsam-77-uniform`, Transformers.js 3.8.1 and single-threaded ONNX WebAssembly in a proxy worker. No image inference API or AI API key. |
+| Masks | Cached image embeddings for repeated prompts; prompt-consistent candidate filtering; model-predicted IoU ranking; connected-component selection; editable binary masks up to 512 pixels per side. |
+| Planning | Conservative resize to a maximum 240-pixel grid, clearance erosion and full row-band shape envelopes. Eight deterministic greedy orders prioritize completed piece count, then nominal area. |
+| Scale/export | Calibrated physical X/Y geometry and SVG millimeter units, material outline, piece labels and a 50 mm verification bar. |
+| Accounts | Firebase Authentication, including anonymous guest workspaces, email/password and Google. |
+| Persistence | Owner-scoped Firestore project revisions and chunked photographs, protected by deployed Firestore rules and transaction-based quota accounting. |
 
-There is no color-threshold fallback or hardcoded demo mask. A model-loading/inference failure must remain visible. Predicted IoU is a model score, not calibrated probability, measured segmentation accuracy or physical dimensional accuracy.
+There is no threshold fallback or hardcoded sample mask. Loading or inference failure remains visible. The model's predicted IoU is **not measured accuracy, calibrated probability or dimensional accuracy**. Uploaded photographs stay in the browser during inference; saving a source photograph uploads it to Firebase.
 
-### Important source locations
+## Data boundaries
 
-- `lib/segmentation.ts`: model loading, prompting, embedding cache and inference.
-- `lib/mask.ts`: binary mask operations and checks.
-- `lib/nesting.ts`: conservative planning and SVG export.
-- `lib/project-schema.ts`: bounded saved-job validation.
-- `app/api/projects/`: authenticated job CRUD.
-- `app/api/photos/`: authenticated upload/read/delete.
-- `db/schema.ts` and `drizzle/`: persistent schema and migrations.
-- `public/models/PROVENANCE.md`: model, licensing and processing details.
-- `public/models/SHA256.json`: pinned model revision, runtime version and file checksums.
+Each workspace permits **50 saved revisions**, **100 photographs**, **5 MiB per photograph** and **50 MiB combined photograph bytes**. Saved input validation also bounds pattern types, quantities, masks and prompts. Photograph uploads accept JPEG/PNG and verify their signatures.
+
+Photos are stored as bounded Firestore chunks, not Firebase Storage objects. Quota and metadata changes use atomic Firestore transactions, with rules checking matching counter transitions. Saved revisions maintain photo references. Deleting one revision retains a shared source; deleting the final reference removes the unused source and its chunks. Referenced-photo deletion is rejected. Explicit workspace erasure removes saved revisions and photos. Interrupted multi-step uploads or cleanup may need retry; atomic quota accounting does not make the entire chunk transfer atomic.
+
+Firestore rules isolate workspaces by authenticated UID. Browser Firebase configuration is public application configuration, not an administrator credential. Never commit service-account keys. Hosting, authentication, Firestore reads/writes and image delivery have usage limits and potential costs. Chunked Firestore photo storage is suitable for this bounded release; validate storage economics and operational recovery before expanding it.
 
 ## Run locally
 
-Requirements: Node.js **22.13.0 or newer**, npm and a modern desktop browser. No AI API key is required. Initial setup needs network access for dependencies and, if absent, model assets.
+Use Node.js **22.13.0 or newer**, npm and a modern desktop browser.
 
 ```sh
-npm run install:ci
+npm ci
 node scripts/download-model.mjs
 npm run dev
 ```
 
-The portable development server defaults to `http://127.0.0.1:5173`. Use the URL printed by the command. To select a port:
-
-```sh
-npm run dev -- --port 5180
-```
-
-`download-model.mjs` downloads a pinned Hugging Face revision, checks ONNX hashes and copies the installed ONNX Runtime browser files. Retain model/license/provenance files when deploying. The model and WebAssembly assets are served from the application origin. Browser inference has no per-request model API fee, but asset delivery, hosting and saved-photo storage have costs. Do not assume offline operation before assets are cached.
-
-### Accounts and persistence
-
-Hosted authentication uses the Sites platform's injected identity through `app/chatgpt-auth.ts`. Do not expose the Worker directly behind user-forgeable identity headers. Portable loopback development offers a mock account through `/signin-with-chatgpt?return_to=/`; it is development-only and does not establish production authentication.
-
-Saved jobs require Cloudflare bindings named **DB** (D1) and **BUCKET** (R2). Check `.openai/hosting.json` and the hosting platform configuration before deploying. The project declares DB/BUCKET bindings. Provision them through the hosting workflow and verify the resulting deployed resources. After the build generates a Worker config, apply the migration to the local database:
-
-```sh
-npm run build
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_faulty_cyclops.sql
-```
-
-Apply each migration once and in order. This command updates local state only. Use the Sites platform deployment workflow for hosted bindings, production migrations and publication. `npm start` previews a built Worker locally; it does not publish.
-
-## API and data boundaries
-
-| Route | Behavior |
-| --- | --- |
-| `GET /api/projects` | List the authenticated owner's latest saved revisions, up to 50. |
-| `POST /api/projects` | Save a new validated revision. Client-computed layout results do not become authoritative saved data. |
-| `DELETE /api/projects?id=UUID` | Delete one owned revision and an unreferenced source photo. |
-| `DELETE /api/projects` | Erase all current-owner jobs and photographs, including abandoned uploads. |
-| `POST /api/photos` | Upload raw JPEG/PNG, up to 5 MiB per file. |
-| `GET /api/photos/{key}` | Read an owned photo with private/no-store caching. |
-| `DELETE /api/photos/{key}` | Delete an unreferenced photo. Referenced photos return a conflict. |
-
-Server validation limits include 12 pattern types, 30 pieces/type, 100 requested pieces/job, 100 exclusions, 50 saved revisions, 100 photos and 50 MiB combined owner photo storage. Write guards check same-origin/Fetch Metadata, and streaming body limits apply even without `Content-Length`. Photographs use owner-derived namespaces plus random identifiers.
-
-These checks are demo guardrails. Quotas are not atomic under concurrent writes. There is no global/IP rate limit, background expiry or automatic cost cap. A failed upload/save or cross-service deletion can leave an object until explicit cleanup. Strict concurrent save/delete consistency, recovery and operational abuse protection remain work before broad commercial launch.
-
-## Verification
+Use the URL printed by Vite. For a specific port, run `npm run dev -- --port 5180`. The model downloader fetches a pinned Hugging Face revision, verifies ONNX hashes and copies the matching installed ONNX Runtime assets. Retain model licenses and provenance when deploying. Initial setup needs network access; inference does not guarantee offline operation before assets are cached.
 
 ```sh
 npm test
 npm run typecheck
 npm run test:model
-npm run test:http
-npm run lint
 npm run build
+npm start
 ```
 
-Tests cover mask operations, reference calibration, planning geometry and saved-input validation. `test:model` executes the local model on synthetic fixtures in Node. `test:http` creates and cleans its own disposable local development records, defaults to port 5175, and requires portable mock authentication plus migrated D1/R2. Set `SECONDCUT_TEST_ORIGIN` to choose a different loopback port. It is intentionally restricted to local previews and does not validate production OAuth. Parent-reported verification: **24 unit tests passed**, **18 development HTTP checks passed**, actual Node model inference ran on two synthetic fixtures, and a compiled-browser leather journey completed segmentation, defect exclusion, review, assumed-scale confirmation, a 9-of-14 layout and a downloaded SVG parsed as 300 × 335 mm with nine pieces. A 390 px mobile viewport showed no horizontal overflow. These are bounded software checks, not a real-material accuracy study. Uploaded-reference calibration, save/reopen and hosted production checks are still being consolidated. Do not infer real-world accuracy from passing unit tests or synthetic fixtures. A release should record its exact revision, test results, actual browser model inference, owner isolation, save/reopen/delete behavior and known failures.
+`npm start` previews the static production build locally. It does not deploy. Development and preview use the configured Firebase backend unless emulators are explicitly enabled. Do not use a shared production workspace for disposable tests.
 
-## Limits and responsible use
+For an independent fork, create your own Firebase project and web app, replace `lib/firebase-config.json`, update `.firebaserc` and the Hosting site in `firebase.json`, and enable anonymous, email/password and Google authentication. Add your development and deployed domains to Firebase Auth's authorized domains. Deploy `firestore.rules` to your own project before testing persistence. For local Auth/Firestore emulators, start the emulators defined in `firebase.json` and set `VITE_FIREBASE_EMULATORS=1` when running Vite.
 
-- Supported patterns are rectangles and ellipses. There is no arbitrary SVG-pattern import, polygon nesting, seam generation or kerf compensation.
-- Rotation is fixed or 0/90 degrees. The app does not infer grain, stretch direction, nap, pattern matching or mirrored-piece requirements.
-- A reference-derived or directly entered scalar photo-width calibration cannot correct perspective, lens distortion, wrinkles or stretch. It assumes flat material and a square-on photograph.
-- Grid approximation can leave viable pieces unplaced and cannot certify submillimeter manufacturing tolerance. The exported grid scale describes planning precision, not physical accuracy.
-- Boundary errors, shadows, similar backgrounds and bad prompts can include worktop or omit material. Manual review is essential.
-- Exclusions are user judgments. The app cannot assess strength, finish, thickness, chemical suitability or machine-cutting safety.
-- Displayed utilization is geometry occupancy. User-entered piece value is hypothetical potential output value, not profit, revenue or achieved material savings.
-- Modern desktop browsers are the initial target. WebAssembly memory exceeds model download size, and older phones may be slow or fail.
+## Deploy
 
-## Credits and provenance
+The live release uses Firebase Hosting site **`secondcut-studio`** within Firebase project **`kitproof`**. That project name is an infrastructure identifier; SecondCut has a separate Hosting site from the earlier application.
 
-Shivam Gupta is the project creator and provides product direction. Codex assisted with coding, research and submission materials. ImageGen produced the two visibly labeled synthetic material fixtures.
+```sh
+npx firebase login
+npm run deploy
+```
 
-SecondCut uses pretrained SlimSAM, not a model trained by this project. See the [SlimSAM paper](https://arxiv.org/abs/2312.05284), [authors' code](https://github.com/czg1225/SlimSAM), [Xenova model card](https://huggingface.co/Xenova/slimsam-77-uniform), [base model](https://huggingface.co/nielsr/slimsam-77-uniform), [Transformers.js](https://github.com/huggingface/transformers.js), and [ONNX Runtime](https://github.com/microsoft/onnxruntime). Retained upstream license files govern those components. The model card declares Apache-2.0; ONNX Runtime uses MIT. Training-data provenance comes from upstream SAM/SlimSAM.
+The deployment script runs validation and builds the SPA before publishing Hosting assets and Firestore rules. Confirm the target project/site before deploying a fork. Builds go to `dist-firebase`; `firebase.json` supplies SPA routing and asset headers. No server identity headers, D1 database or R2 bucket are required by this deployed application.
 
-The Sites/Vinext starter provides hosting and authentication infrastructure. Other dependencies and their exact installed versions appear in `package.json` and `package-lock.json`. This README does not relicense third-party code or assets. No customer data, interviews, traction, measured ROI or production accuracy are claimed.
+## Verification
+
+Current recorded checks: **31 unit tests passed**, **18 real Firebase integration checks passed**, and **four actual Node model runs passed** across the two synthetic photographs, including repeated prompts sharing an image embedding. Cloud integration covered authentication, owner isolation, rejected foreign reads, photo roundtrips, saved revisions, shared-photo deletion, quota checks and guest-to-email account continuity.
+
+- `npm test`: mask operations, malformed input rejection, calibration, conservative rectangle/ellipse geometry, physical scale, SVG and saved-input validation.
+- `npm run test:model`: actual local ONNX inference on synthetic fixtures. Optional `--output FILE` and `--mask-dir DIR` write evaluation evidence, never app fallback masks.
+- `npx tsx scripts/test-firebase.ts`: creates and cleans disposable accounts and records against the configured Firebase backend. This contacts the real service unless `SECONDCUT_USE_EMULATORS=1` is set. Run only against a project you control.
+
+These checks establish bounded software behavior, not field accuracy, material savings, manufacturing tolerance or universal browser compatibility. Node inference does not replace a deployed-browser smoke test. Record the exact release revision and repeat browser segmentation, save/reopen/delete, calibration and SVG verification after deployment changes.
+
+## Limits and product hypothesis
+
+SecondCut targets small makers planning repeat batches from irregular remnants. Its commercial hypothesis is less time manually mapping remnants and trying layouts. Customer demand, willingness to pay and measured material savings require workshop validation. Existing products include [UMWL](https://usemorewasteless.com/leather-hide-nesting/), [Stitch Hero](https://stitch-hero.com/) and industrial [Zünd leather systems](https://www.zund.com/en/applications/interiors/turnkey-systems-for-leather-processing). This release explores a lightweight browser workflow connecting image segmentation, human correction and practical layout planning.
+
+- Rectangles and ellipses only; fixed orientation or quarter-turn rotation. No arbitrary pattern import, seam generation, grain inference or kerf compensation.
+- Scalar calibration cannot correct perspective, lens distortion, wrinkles or stretch. The material and reference must be flat and photographed square-on.
+- Conservative raster approximation can leave viable pieces unplaced. The planner is a heuristic, not a global optimum or certified cutting instruction.
+- Lighting, shadows, background similarity and prompts affect segmentation. Inspect every boundary and mark defects manually. The model cannot assess strength, finish, thickness or cutting safety.
+- Utilization is geometric occupancy. User-entered piece value is hypothetical output value, not profit or achieved savings.
+- Model memory exceeds download size. Older phones may be slow or fail. Modern desktop browsers are the initial target.
+
+## Source and credits
+
+Core files: `lib/segmentation.ts`, `lib/mask.ts`, `lib/nesting.ts`, `lib/calibration.ts`, `lib/project-schema.ts`, `lib/firebase-api.ts`, `lib/firebase.ts`, `firestore.rules`, and `client/`. Model revision, licenses and processing notes are in `public/models/PROVENANCE.md`; hashes are in `public/models/SHA256.json`.
+
+SecondCut uses pretrained SlimSAM; this project did not train it. See the [paper](https://arxiv.org/abs/2312.05284), [authors' code](https://github.com/czg1225/SlimSAM), [Xenova model card](https://huggingface.co/Xenova/slimsam-77-uniform), [Transformers.js](https://github.com/huggingface/transformers.js), and [ONNX Runtime](https://github.com/microsoft/onnxruntime). The model card declares Apache-2.0; ONNX Runtime uses MIT. Retained upstream licenses govern those components, and training-data provenance is inherited from upstream SAM/SlimSAM. The original starter and third-party libraries are credited through their retained files and lockfile. No customer traction, measured ROI or production accuracy is claimed.

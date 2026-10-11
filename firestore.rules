@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+  function quota(uid) { return /databases/$(database)/documents/secondcutUsers/$(uid)/meta/quota; }
+  function before(uid) { return exists(quota(uid)) ? get(quota(uid)).data : {'projects':0,'photos':0,'bytes':0}; }
+  function changed(uid, op, id) { return getAfter(quota(uid)).data.op == op && getAfter(quota(uid)).data.id == id; }
+  function validQuota(uid) {
+   let a=request.resource.data; let b=before(uid);
+   let project=/databases/$(database)/documents/secondcutUsers/$(uid)/projects/$(a.id); let photo=/databases/$(database)/documents/secondcutUsers/$(uid)/photos/$(a.id);
+   return a.keys().hasOnly(['projects','photos','bytes','op','id','size']) && a.projects is int && a.photos is int && a.bytes is int && a.size is int && a.projects>=0 && a.projects<=50 && a.photos>=0 && a.photos<=100 && a.bytes>=0 && a.bytes<=52428800 && (
+    (a.op=='createProject' && !exists(project) && existsAfter(project) && a.projects==b.projects+1 && a.photos==b.photos && a.bytes==b.bytes && a.size==0) ||
+    (a.op=='deleteProject' && exists(project) && !existsAfter(project) && a.projects==b.projects-1 && a.photos==b.photos && a.bytes==b.bytes && a.size==0) ||
+    (a.op=='createPhoto' && !exists(photo) && existsAfter(photo) && a.size==getAfter(photo).data.bytes && a.projects==b.projects && a.photos==b.photos+1 && a.bytes==b.bytes+a.size) ||
+    (a.op=='deletePhoto' && exists(photo) && !existsAfter(photo) && a.size==get(photo).data.bytes && a.projects==b.projects && a.photos==b.photos-1 && a.bytes==b.bytes-a.size)
+   );
+  }
+  function validSource(uid,image) {
+   return image in ['/demo/leather.png','/demo/fabric.png'] || (image is string && image.matches('^/api/photos/[a-f0-9]{64}_[a-f0-9-]{36}$') && get(/databases/$(database)/documents/secondcutUsers/$(uid)/photos/$(image.split('/')[3])).data.status=='ready');
+  }
+  match /secondcutUsers/{uid} {
+   match /meta/quota { allow read: if owner(uid); allow create,update: if owner(uid) && validQuota(uid); }
+   match /projects/{id} {
+    allow read: if owner(uid);
+    allow create: if owner(uid) && id.matches('^[a-f0-9-]{36}$') && changed(uid,'createProject',id) && request.resource.data.keys().hasOnly(['payload','createdAt']) && request.resource.data.createdAt is int && request.resource.data.payload.name is string && request.resource.data.payload.name.size()>0 && request.resource.data.payload.name.size()<=100 && request.resource.data.payload.mask.runs.size()<=25000 && request.resource.data.payload.patterns.size()<=12 && validSource(uid,request.resource.data.payload.image);
+    allow delete: if owner(uid) && changed(uid,'deleteProject',id);
+   }
+   match /photos/{id} {
+    allow read: if owner(uid);
+    allow create: if owner(uid) && id.matches('^[a-f0-9]{64}_[a-f0-9-]{36}$') && changed(uid,'createPhoto',id) && request.resource.data.keys().hasOnly(['bytes','type','chunks','status','refs']) && request.resource.data.bytes is int && request.resource.data.bytes>0 && request.resource.data.bytes<=5242880 && request.resource.data.type in ['image/jpeg','image/png'] && request.resource.data.chunks is int && request.resource.data.chunks>=1 && request.resource.data.chunks<=14 && request.resource.data.status=='uploading' && request.resource.data.refs==[];
+    allow update: if owner(uid) && (
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && ((resource.data.status=='uploading' && request.resource.data.status=='ready') || (request.resource.data.status=='deleting' && resource.data.refs.size()==0))) ||
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['refs']) && request.resource.data.refs is list && request.resource.data.refs.size()<=50 && (
+      (getAfter(quota(uid)).data.op=='createProject' && request.resource.data.refs==resource.data.refs.concat([getAfter(quota(uid)).data.id]) && getAfter(/databases/$(database)/documents/secondcutUsers/$(uid)/projects/$(getAfter(quota(uid)).data.id)).data.payload.image=='/api/photos/'+id) ||
+      (getAfter(quota(uid)).data.op=='deleteProject' && request.resource.data.refs==resource.data.refs.removeAll([getAfter(quota(uid)).data.id]) && get(/databases/$(database)/documents/secondcutUsers/$(uid)/projects/$(getAfter(quota(uid)).data.id)).data.payload.image=='/api/photos/'+id)
+     ))
+    );
+    allow delete: if owner(uid) && resource.data.refs.size()==0 && resource.data.status=='deleting' && changed(uid,'deletePhoto',id);
+    match /chunks/{chunk} {
+     allow read,delete: if owner(uid);
+     allow create: if owner(uid) && chunk.matches('^(0|[1-9]|1[0-3])$') && int(chunk)<get(/databases/$(database)/documents/secondcutUsers/$(uid)/photos/$(id)).data.chunks && get(/databases/$(database)/documents/secondcutUsers/$(uid)/photos/$(id)).data.status=='uploading' && request.resource.data.keys().hasOnly(['data']) && request.resource.data.data is string && request.resource.data.data.size()>0 && request.resource.data.data.size()<=500000;
+    }
+   }
+  }
+ }
+}
