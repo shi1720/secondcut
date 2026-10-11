@@ -1,0 +1,39 @@
+{
+  "revision": "5850ab45f587c112167512ffef949107115e26a0",
+  "model": "Xenova/slimsam-77-uniform",
+  "runtime": "1.22.0-dev.20250409-89f8206ba4",
+  "files": {
+    "config.json": {
+      "sha256": "6339884f168658d3ca6473b486973913fb33e84e625e06ae2dd7b4a808187419",
+      "bytes": 379
+    },
+    "preprocessor_config.json": {
+      "sha256": "225545a743c654e3c495ec6f545a0eaba57c8ba3fbbd8483b3cb1c0fc58db517",
+      "bytes": 466
+    },
+    "README.md": {
+      "sha256": "93ae9259be974a58bee5e16bb68c42dcf511ea829f58aa405694af04d0296773",
+      "bytes": 2987
+    },
+    "onnx/vision_encoder_quantized.onnx": {
+      "sha256": "cce23c7b2e5d4f330932738fb67ba518e04b0d99ccdd1cccd22a7da4e01f2971",
+      "bytes": 8882165
+    },
+    "onnx/prompt_encoder_mask_decoder_quantized.onnx": {
+      "sha256": "cb90b279f549d2cab7fd6e20c38522438c65d84bdcca3d2a764cff7d857fdce2",
+      "bytes": 4903810
+    },
+    "ort/ort-wasm-simd-threaded.jsep.mjs": {
+      "sha256": "08fb86ec433c78bfb032c5d84a68b8e8e5a8d81268fa39e24314179a5767a5b9",
+      "bytes": 44484
+    },
+    "ort/ort-wasm-simd-threaded.jsep.wasm": {
+      "sha256": "c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39",
+      "bytes": 21596019
+    },
+    "ort/ort.webgpu.bundle.min.mjs": {
+      "sha256": "315910a5b1c94f1394d7d7d12f753c16085428b636bb6c8d0e3867c66a5acdf0",
+      "bytes": 398191
+    }
+  }
+}
